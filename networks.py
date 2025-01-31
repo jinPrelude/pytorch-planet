@@ -39,8 +39,8 @@ class RepresentationModel(nn.Module):
 
     def forward(self, h_state, encoded_obs):
         concat_input = torch.concat([h_state, encoded_obs], dim=1)
-        mu, pre_std = torch.chunk(self.repr_net(concat_input), chunks=2, dim=1)
-        std = fnn.softplus(pre_std + 0.55) + self.params['min_std']
+        mu, pre_std = torch.chunk(self.repr_net(concat_input), chunks=2, dim=1) # output[:len(output)//2] 는 mu, output[len(output)//2:] 는 pre_std
+        std = fnn.softplus(pre_std + 0.55) + self.params['min_std'] # T_T.md 10번. 공식 코드에서도 똑같이 구현.
         dist_posterior = Independent(Normal(loc=mu, scale=std), reinterpreted_batch_ndims=1)
         return dist_posterior
 

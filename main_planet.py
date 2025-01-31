@@ -1,9 +1,13 @@
+import os
+os.environ['MUJOCO_GL'] = 'egl'
+
 import sys
 import pathlib
 from argparse import ArgumentParser
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 from model_based_agent import ModelBasedLearner
 from utils import seed_everything
+import wandb
 
 
 def main():
@@ -16,7 +20,8 @@ def main():
     # parser.add_argument('--configs', nargs='+', default=['defaults', 'dmc'])
     args, remaining = parser.parse_known_args()
     # Update from configs.yaml
-    configs = yaml.safe_load((pathlib.Path(sys.argv[0]).parent / 'configs.yaml').read_text())
+    yaml = YAML(typ='safe', pure=True)
+    configs = yaml.load((pathlib.Path(sys.argv[0]).parent / 'configs.yaml').read_text())
     default_params = dict()
     for name in args.configs:
         default_params.update(configs[name])
@@ -27,13 +32,27 @@ def main():
     args = parser.parse_args(remaining)
     params = vars(args)
 
+    env_name = f"{params['api_name']}_{params['domain_name']}_{params['task_name']}"
+
+    # Initialize wandb with tensorboard sync
+    wandb.init(
+        project="pytorch-planet",
+        config=params,
+        sync_tensorboard=True,
+        name=f"planet_{env_name}_{params['rng_seed']}"
+    )
+
+
     # Seed RNGs
     seed_everything(seed=params['rng_seed'])
 
     # Initialize model-based agent and learn with planet
     agent = ModelBasedLearner(params=params)
-    agent.collect_seed_episodes()
+    agent.collect_seed_episodes() # just warumup start
     agent.learn_with_planet()
+
+    # Close wandb run
+    wandb.finish()
 
 
 if __name__ == '__main__':

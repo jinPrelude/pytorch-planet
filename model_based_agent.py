@@ -11,7 +11,7 @@ from torch.distributions import Normal, Independent
 from torch.utils.tensorboard import SummaryWriter
 from dm_control import suite
 from dm_control.suite.wrappers import pixels
-from gymnasium.wrappers import TimeLimit, PixelObservationWrapper, TransformObservation
+from gymnasium.wrappers import TimeLimit, TransformObservation, AddRenderObservation
 from utils import *
 from planet import Planet
 
@@ -45,7 +45,7 @@ class ModelBasedLearner:
         env = gym.make(self.params['env_name'], render_mode='rgb_array')
         env = ActionRepeat(env, n_repeat=self.params['action_repeat'])
         env = TimeLimit(env, max_episode_steps=self.params['max_episode_step'])
-        env = PixelObservationWrapper(env)
+        env = AddRenderObservation(env)
         env = TransformObservation(env, lambda obs: self.process_gym_observation(obs['pixels']))
         env.reset(seed=self.params['rng_seed'])
         action_dim = env.action_space.shape[0]
@@ -155,16 +155,17 @@ class ModelBasedLearner:
 
     def learn_with_planet(self):
         global_step = 0
-        for learning_step in range(self.params['n_steps']):
+        for learning_step in range(self.params['n_steps']): # while not converge loop
             print(f'\n\nLearning step: {1+learning_step}/{self.params["n_steps"]}\n')
-            self.world_model.train()
+            self.world_model.train()    # 학습 모드로 변경
+            # world model 학습 loop
             for update_step in range(self.params['collect_interval']):
                 print(f'\rFitting world model : ({update_step+1}/{self.params["collect_interval"]})', end='')
                 sampled_episodes = self.replay_buffer.sample(self.params['batch_size'])
-                dist_predicted = self.world_model(sampled_episodes=sampled_episodes)
-                loss, (recon_loss, kl_loss, reward_loss) = self.world_model.compute_loss(target=sampled_episodes, dist_predicted=dist_predicted)
-                loss.backward()
-                nn.utils.clip_grad_value_(self.world_model.parameters(), clip_value=self.params['max_grad_norm'])
+                dist_predicted = self.world_model(sampled_episodes=sampled_episodes) # predict value 
+                loss, (recon_loss, kl_loss, reward_loss) = self.world_model.compute_loss(target=sampled_episodes, dist_predicted=dist_predicted) # recon loss 
+                loss.backward() # backprop
+                nn.utils.clip_grad_value_(self.world_model.parameters(), clip_value=self.params['max_grad_norm']) # A. Hyper Parameters 2번째 문단. Batch size = 50 일 때라고도 명시.
                 self.optimizer.step()
                 self.optimizer.zero_grad()
                 self.logger.add_scalar('Reward/max_from_train_batch', sampled_episodes['reward'].max(), global_step)
@@ -183,7 +184,7 @@ class ModelBasedLearner:
         self.world_model.eval()
         prev_obs, _ = self.env.reset()
         h_state = self.world_model.get_init_h_state(batch_size=1)
-        observed_frames, reconstructed_frames = list(), list()
+        observed_frames, reconstructed_frames = list(), list() # 영상 logging을 위한 코드
         ep_reward = 0
         while True:
             observed_frames.append(prev_obs)
@@ -288,6 +289,7 @@ class ModelBasedLearner:
 
 
 class ReplayBuffer:
+    # 정말 간단하게 잘 짰다.
     def __init__(self, params):
         self.params = params
         self.d_type = get_dtype(self.params['fp_precision'])
@@ -307,7 +309,7 @@ class ReplayBuffer:
         for ep_idx in sampled_indices:
             start_idx = np.random.randint(low=0, high=len(self.memory[ep_idx])-self.params['chunk_length'])
             chunked_episodes.append(self.memory[ep_idx][start_idx:start_idx+self.params['chunk_length']])
-        serialized_episodes = self.serialize_episode(chunked_episodes)
+        serialized_episodes = self.serialize_episode(chunked_episodes) # List of array -> Torch.Tensor() 화 시켜줌
         return serialized_episodes
 
     def serialize_episode(self, list_episodes):
