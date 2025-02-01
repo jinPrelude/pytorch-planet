@@ -1,6 +1,3 @@
-import os
-os.environ['MUJOCO_GL'] = 'egl'
-
 import sys
 import pathlib
 from argparse import ArgumentParser
