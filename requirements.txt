@@ -8,3 +8,4 @@ tensorboard
 einops
 ruamel.yaml==0.18.10
 moviepy==2.1.2
+wandb

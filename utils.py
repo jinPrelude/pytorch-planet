@@ -2,7 +2,7 @@ import random
 import torch
 import numpy as np
 import gymnasium
-from moviepy.editor import ImageSequenceClip
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
 
 def get_device(tag):
