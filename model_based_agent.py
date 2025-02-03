@@ -161,7 +161,7 @@ class ModelBasedLearner:
             # world model 학습 loop
             for update_step in range(self.params['collect_interval']):
                 print(f'\rFitting world model : ({update_step+1}/{self.params["collect_interval"]})', end='')
-                sampled_episodes = self.replay_buffer.sample(self.params['batch_size'])
+                sampled_episodes = self.replay_buffer.sample(self.params['batch_size']) # (chunk_length, batch_size, ...)
                 dist_predicted = self.world_model(sampled_episodes=sampled_episodes) # predict value 
                 loss, (recon_loss, kl_loss, reward_loss) = self.world_model.compute_loss(target=sampled_episodes, dist_predicted=dist_predicted) # recon loss 
                 loss.backward() # backprop
@@ -324,4 +324,5 @@ class ReplayBuffer:
         batched_ep_obs = torch.stack(batched_ep_obs).to(self.d_type).to(self.device)
         batched_ep_action = torch.stack(batched_ep_action).to(self.d_type).to(self.device)
         batched_ep_reward = torch.stack(batched_ep_reward).to(self.d_type).to(self.device)
+        # 주의: transpose 통해 (batch_size, sequence_length, ...) -> (sequence_length, batch_size, ...) 로 바꿔줌
         return {'obs': batched_ep_obs.transpose(0, 1), 'action': batched_ep_action.transpose(0, 1), 'reward': batched_ep_reward.transpose(0, 1)}

@@ -23,7 +23,7 @@ class Planet(nn.Module):
         self.rnn_model = RecurrentModel(params=self.params, action_dim=self.action_dim) # 그냥 hidden_state + action 같이 받는 GRU
         self.obs_encoder = EncoderModel(params=self.params) # 그냥 CNN
         self.repr_model = RepresentationModel(params=self.params) # VAE 처럼 mu, sigma 출력. impl. details 있으니 들어가보셈.
-        self.transition_model = TransitionModel(params=self.params)
+        self.transition_model = TransitionModel(params=self.params) # VAE 처럼 mu, sigma 출력. impl. details 있으니 들어가보셈.
         self.decoder_model = DecoderModel(params=self.params)
         self.reward_model = RewardModel(params=self.params)
 
@@ -35,21 +35,21 @@ class Planet(nn.Module):
 
     def forward(self, sampled_episodes):
         dist_predicted = {'prior': list(), 'posterior': list(), 'recon_obs': list(), 'reward': list()}
-        h_state = self.get_init_h_state(batch_size=self.params['batch_size'])
-        # sequence iteration 시작
+        h_state = self.get_init_h_state(batch_size=self.params['batch_size']) # (batch_size, h_dim)
+        # sequence iteration 시작 (batch_wise가 아닌 sequence_wise)
         for time_stamp in range(self.params['chunk_length']):
-            input_obs = sampled_episodes['obs'][time_stamp]
+            input_obs = sampled_episodes['obs'][time_stamp] # 모든 batch의 첫번째 obs
             noisy_input_obs = (1/pow(2, self.params['pixel_bit']))*torch.randn_like(input_obs) + input_obs # T_T.md 12번. generalization 성능 향상을 위한 noise 추가
             action = sampled_episodes['action'][time_stamp]
 
-            encoded_obs = self.obs_encoder(noisy_input_obs)
-            z_prior = self.transition_model(h_state)
-            z_posterior = self.repr_model(h_state, encoded_obs) # VAE encoder과 비슷한듯. mu와 sigma를 출력 후 dist 객체를 내뱉는다.
+            encoded_obs = self.obs_encoder(noisy_input_obs) # embed size: 1024
+            z_prior = self.transition_model(h_state) # MLP. mu, sigma 출력 후 dist 객체 출력
+            z_posterior = self.repr_model(h_state, encoded_obs) # MLP. mu, sigma 출력 후 dist 객체 출력
 
             z_state = z_posterior.rsample() # reparameterization sampling
 
             dist_recon_obs = self.decoder_model(h_state, z_state)
-            dist_reward = self.reward_model(h_state, z_state)
+            dist_reward = self.reward_model(h_state, z_state) # MLP. mu, sigma 출력 후 dist 객체 출력
             h_state = self.rnn_model(h_state, z_state, action)
 
             dist_predicted['prior'].append(z_prior)
@@ -66,7 +66,7 @@ class Planet(nn.Module):
         kl_loss = torch.stack(
             [kl_divergence(p=dist_posterior, q=dist_prior) for dist_prior, dist_posterior in
              zip(dist_predicted['prior'], dist_predicted['posterior'])]
-        ) # T_T.md 5번. kl 거리에 순서가 중요한 줄 몰랐다.
+        ) # T_T.md 5번. kl 거리에 순서가 중요한 줄 몰랐다. / 해보니까 바꿔도 학습 되긴 함.
         kl_loss = (torch.maximum(kl_loss, torch.tensor([self.params['free_nats']])[0])).mean() # A.Hyper parameters. free_nats가 뭔데?
         reward_prediction_loss = ((target['reward'] - sampled_reward) ** 2).mean()
         # Net loss term
